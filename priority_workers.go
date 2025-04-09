@@ -2,6 +2,7 @@ package priority_workers
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/dmgrit/priority-channels"
@@ -418,8 +419,12 @@ func processChannel[T any](ctx context.Context, name string, c <-chan T) (<-chan
 	return resChannel, fnShutdown
 }
 
-func ProcessPriorityChannel[T any](ctx context.Context, c *priority_channels.PriorityChannel[T]) (<-chan ReceiveResult[T], ShutdownFunc) {
-	return processPriorityChannel(ctx, c)
+func ProcessPriorityChannel[T any](ctx context.Context, c *priority_channels.PriorityChannel[T]) (<-chan ReceiveResult[T], ShutdownFunc, error) {
+	if c == nil {
+		return nil, nil, errors.New("priority channel is nil")
+	}
+	resChan, shutdownFunc := processPriorityChannel(ctx, c)
+	return resChan, shutdownFunc, nil
 }
 
 func processPriorityChannel[T any](ctx context.Context, c *priority_channels.PriorityChannel[T]) (<-chan ReceiveResult[T], ShutdownFunc) {
