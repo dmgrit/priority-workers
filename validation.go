@@ -56,18 +56,6 @@ func convertResultChannelsWithFreqRatioToChannels[T any](channelsWithFreqRatio [
 	}
 	return res
 }
-
-func convertResultChannelsWithFreqRatioExToChannels[T any](channelsWithFreqRatio []ResultChannelWithFreqRatioEx[T]) []channelWithFreqRatio {
-	res := make([]channelWithFreqRatio, 0, len(channelsWithFreqRatio))
-	for _, c := range channelsWithFreqRatio {
-		res = append(res, channelWithFreqRatio{
-			ChannelName: c.Name(),
-			FreqRatio:   c.FreqRatio(),
-		})
-	}
-	return res
-}
-
 func validateChannelsWithFreqRatio(channels []channelWithFreqRatio) error {
 	if len(channels) == 0 {
 		return ErrNoChannels

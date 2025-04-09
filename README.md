@@ -26,13 +26,13 @@ payingCustomerLowPriorityC := make(chan string)
 freeUserHighPriorityC := make(chan string)
 freeUserLowPriorityC := make(chan string)
 
-urgentMessagesChannel, urgentMessagesShutdownFunc, err := priority_workers.ProcessChannelEx(ctx,
+urgentMessagesChannel, urgentMessagesShutdownFunc, err := priority_workers.ProcessChannel(ctx,
     "Urgent Messages", urgentMessagesC)
 if err != nil {
     // handle error
 }
 
-payingCustomerChannel, payingCustomerShutdownFunc, err := priority_workers.ProcessByFrequencyRatioEx(ctx, []channels.ChannelWithFreqRatio[string]{
+payingCustomerChannel, payingCustomerShutdownFunc, err := priority_workers.ProcessByFrequencyRatio(ctx, []channels.ChannelWithFreqRatio[string]{
     channels.NewChannelWithFreqRatio(
         "Paying Customer - High Priority",
         payingCustomerHighPriorityC,
@@ -46,7 +46,7 @@ if err != nil {
     // handle error
 }
 
-freeUserChannel, freeUserShutdownFunc, err := priority_workers.ProcessByFrequencyRatioEx(ctx, []channels.ChannelWithFreqRatio[string]{
+freeUserChannel, freeUserShutdownFunc, err := priority_workers.ProcessByFrequencyRatio(ctx, []channels.ChannelWithFreqRatio[string]{
     channels.NewChannelWithFreqRatio(
         "Free User - High Priority",
         freeUserHighPriorityC,
@@ -60,13 +60,13 @@ if err != nil {
     // handle error
 }
 
-combinedUsersChannel, combinedUsersShutdownFunc, err := priority_workers.CombineByFrequencyRatioEx(ctx, []priority_workers.ResultChannelWithFreqRatioEx[string]{
-    priority_workers.NewResultChannelWithFreqRatioEx(
+combinedUsersChannel, combinedUsersShutdownFunc, err := priority_workers.CombineByFrequencyRatio(ctx, []priority_workers.ResultChannelWithFreqRatio[string]{
+    priority_workers.NewResultChannelWithFreqRatio(
         "Paying Customer",
         payingCustomerChannel,
         payingCustomerShutdownFunc,
         5),
-    priority_workers.NewResultChannelWithFreqRatioEx(
+    priority_workers.NewResultChannelWithFreqRatio(
         "Free User",
         freeUserChannel,
         freeUserShutdownFunc,
@@ -76,13 +76,13 @@ if err != nil {
     // handle error
 }
 
-ch, shutdownFunc, err := priority_workers.CombineByHighestAlwaysFirstEx(ctx, []priority_workers.ResultChannelWithPriorityEx[string]{
-    priority_workers.NewResultChannelWithPriorityEx(
+ch, shutdownFunc, err := priority_workers.CombineByHighestAlwaysFirst(ctx, []priority_workers.ResultChannelWithPriority[string]{
+    priority_workers.NewResultChannelWithPriority(
         "Urgent Messages",
         urgentMessagesChannel,
         urgentMessagesShutdownFunc,
         10),
-    priority_workers.NewResultChannelWithPriorityEx(
+    priority_workers.NewResultChannelWithPriority(
         "Combined Users",
         combinedUsersChannel,
         combinedUsersShutdownFunc,
@@ -94,12 +94,12 @@ if err != nil {
 
 for msg := range ch {
     if msg.Status == priority_channels.ReceiveChannelClosed {
-        fmt.Printf("Channel %s closed\n", msg.ReceiveDetails.ChannelName)
+        fmt.Printf("Channel %s closed\n", msg.ChannelName())
         continue
     }
     if msg.Status != priority_channels.ReceiveSuccess  {
         break
     }
-    fmt.Printf("%s: %s\n", msg.ReceiveDetails.ChannelName, msg.Msg)
+    fmt.Printf("%s: %s\n", msg.ChannelName(), msg.Msg)
 }
 ```

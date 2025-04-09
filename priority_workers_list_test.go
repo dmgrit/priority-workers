@@ -167,7 +167,7 @@ func testProcessMessagesByFrequencyRatio_RandomChannelsList(t *testing.T,
 		var reachedTotalCount bool
 		mtx.Lock()
 		totalCount++
-		countPerChannel[result.ChannelName] = countPerChannel[result.ChannelName] + 1
+		countPerChannel[result.ChannelName()] = countPerChannel[result.ChannelName()] + 1
 		reachedTotalCount = totalCount == messagesNum
 		mtx.Unlock()
 		if reachedTotalCount {
