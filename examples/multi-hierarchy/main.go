@@ -251,29 +251,38 @@ func main() {
 		}
 		if strings.HasPrefix(upperLine, "C") || strings.HasPrefix(upperLine, "FC") {
 			shutdownMode := priority_workers.Graceful
+			var shutdownOptions []func(*priority_workers.ShutdownOptions[string])
 			if strings.HasPrefix(upperLine, "FC") {
 				shutdownMode = priority_workers.Force
+				shutdownOptions = append(shutdownOptions, priority_workers.OnMessageDrop(func(msg string, details priority_channels.ReceiveDetails) {
+					fullChannelPath := ""
+					for _, channelNode := range details.PathInTree {
+						fullChannelPath += fmt.Sprintf("%s [%d] -> ", channelNode.ChannelName, channelNode.ChannelIndex)
+					}
+					fullChannelPath = fullChannelPath + fmt.Sprintf("%s [%d]", details.ChannelName, details.ChannelIndex)
+					fmt.Printf("Message dropped from: %s\n", fullChannelPath)
+				}))
 			}
 			switch strings.TrimPrefix(upperLine, "F") {
 			case "CA":
 				fmt.Printf("Closing Priority Channel of Customer A\n")
-				customerAShutdownFunc(shutdownMode)
+				customerAShutdownFunc(shutdownMode, shutdownOptions...)
 				continue
 			case "CB":
 				fmt.Printf("Closing Priority Channel of Customer B\n")
-				customerBShutdownFunc(shutdownMode)
+				customerBShutdownFunc(shutdownMode, shutdownOptions...)
 				continue
 			case "CU":
 				fmt.Printf("Closing Priority Channel of Urgent Messages\n")
-				urgentMessagesCancelFunc(shutdownMode)
+				urgentMessagesCancelFunc(shutdownMode, shutdownOptions...)
 				continue
 			case "CC":
 				fmt.Printf("Closing Combined Priority Channel of Both Customers\n")
-				combinedUsersAndMessageTypesShutdownFunc(shutdownMode)
+				combinedUsersAndMessageTypesShutdownFunc(shutdownMode, shutdownOptions...)
 				continue
 			case "CG":
 				fmt.Printf("Closing Priority Channel \n")
-				cancelAll(shutdownMode)
+				cancelAll(shutdownMode, shutdownOptions...)
 				continue
 			}
 			upperLine = strings.TrimPrefix(upperLine, "C")

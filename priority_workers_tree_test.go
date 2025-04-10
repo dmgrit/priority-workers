@@ -204,7 +204,7 @@ func getResultChannelsToProcessFromFreqRatioTree(t *testing.T, ctx context.Conte
 
 func doGenerateGoRoutinesPriorityChannelTreeFromFreqRatioTree(t *testing.T, ctx context.Context,
 	node *freqRatioTreeNode,
-	channelsWithExpectedRatios map[string]*channelWithExpectedRatio) (<-chan priority_workers.ReceiveResult[string], priority_workers.ShutdownFunc, []priority_workers.ResultChannelWithFreqRatio[string]) {
+	channelsWithExpectedRatios map[string]*channelWithExpectedRatio) (<-chan priority_workers.ReceiveResult[string], priority_workers.ShutdownFunc[string], []priority_workers.ResultChannelWithFreqRatio[string]) {
 	if len(node.Children) == 0 {
 		cwr := &channelWithExpectedRatio{
 			channel:       make(chan string, 10),

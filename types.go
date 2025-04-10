@@ -6,7 +6,7 @@ import (
 
 type ChannelWithShutdownFunc[T any] struct {
 	Channel      <-chan T
-	ShutdownFunc ShutdownFunc
+	ShutdownFunc ShutdownFunc[T]
 }
 
 type ReceiveResult[T any] struct {
@@ -21,7 +21,7 @@ func (r ReceiveResult[T]) ChannelName() string {
 
 type ResultChannelWithFreqRatio[T any] struct {
 	channel      <-chan ReceiveResult[T]
-	shutdownFunc ShutdownFunc
+	shutdownFunc ShutdownFunc[T]
 	name         string
 	freqRatio    int
 }
@@ -34,15 +34,15 @@ func (c *ResultChannelWithFreqRatio[T]) ResultChannel() <-chan ReceiveResult[T] 
 	return c.channel
 }
 
-func (c *ResultChannelWithFreqRatio[T]) Shutdown(mode ShutdownMode) {
-	c.shutdownFunc(mode)
+func (c *ResultChannelWithFreqRatio[T]) Shutdown(mode ShutdownMode, options ...func(*ShutdownOptions[T])) {
+	c.shutdownFunc(mode, options...)
 }
 
 func (c *ResultChannelWithFreqRatio[T]) FreqRatio() int {
 	return c.freqRatio
 }
 
-func NewResultChannelWithFreqRatio[T any](name string, channel <-chan ReceiveResult[T], shutdownFunc ShutdownFunc, freqRatio int) ResultChannelWithFreqRatio[T] {
+func NewResultChannelWithFreqRatio[T any](name string, channel <-chan ReceiveResult[T], shutdownFunc ShutdownFunc[T], freqRatio int) ResultChannelWithFreqRatio[T] {
 	return ResultChannelWithFreqRatio[T]{
 		name:         name,
 		channel:      channel,
@@ -53,7 +53,7 @@ func NewResultChannelWithFreqRatio[T any](name string, channel <-chan ReceiveRes
 
 type ResultChannelWithPriority[T any] struct {
 	channel      <-chan ReceiveResult[T]
-	shutdownFunc ShutdownFunc
+	shutdownFunc ShutdownFunc[T]
 	name         string
 	priority     int
 }
@@ -66,15 +66,15 @@ func (c *ResultChannelWithPriority[T]) ResultChannel() <-chan ReceiveResult[T] {
 	return c.channel
 }
 
-func (c *ResultChannelWithPriority[T]) Shutdown(mode ShutdownMode) {
-	c.shutdownFunc(mode)
+func (c *ResultChannelWithPriority[T]) Shutdown(mode ShutdownMode, options ...func(*ShutdownOptions[T])) {
+	c.shutdownFunc(mode, options...)
 }
 
 func (c *ResultChannelWithPriority[T]) Priority() int {
 	return c.priority
 }
 
-func NewResultChannelWithPriority[T any](name string, channel <-chan ReceiveResult[T], shutdownFunc ShutdownFunc, priority int) ResultChannelWithPriority[T] {
+func NewResultChannelWithPriority[T any](name string, channel <-chan ReceiveResult[T], shutdownFunc ShutdownFunc[T], priority int) ResultChannelWithPriority[T] {
 	return ResultChannelWithPriority[T]{
 		name:         name,
 		channel:      channel,
