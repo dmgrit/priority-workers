@@ -3,6 +3,31 @@ Process Go channels by frequency ratio to multiple levels of hierarchy using gor
 
 This is a companion project to https://github.com/dmgrit/priority-channels
 
+## Concepts
+
+This package allows you to process channels by frequency ratio, either from a flat list of channels or from a hierarchy of channels.  
+Processing is handled internally by initializing a number of goroutines proportional to the given frequency ratio.   
+For example, if you have three channels with a frequency ratio of 1:2:3, the package will create six goroutines (= 1+2+3) to process the channels.  
+One goroutine will read from the first channel, two will read from the second, and three will read from the third.  
+These goroutines will read from the channels and either invoke a callback function or forward the received message to the next channel in the hierarchy.
+Processing continues until the provided context is canceled, the processing channel is shut down, or all channels are closed.
+  
+Channels used in a hierarchy must be of type `priority_workers.Channel`.  
+It is defined as follows:  
+```go
+type Channel[T any] struct {
+    Output   <-chan Delivery[T]
+    Shutdown ShutdownFunc[T]
+}
+```
+Every channel has a `Shutdown(mode ShutdownMode)` function, which can be used to stop all goroutines in its subtree and close the channel.  
+Shutdown can be triggered either indirectly, by canceling the context, or directly by calling the `Shutdown` function.  
+
+Shutdown can be called in either `Graceful` or `Force` mode: 
+- `Graceful` shutdown waits for all goroutines to finish processing messages before closing the channel.  
+- `Force` shutdown immediately stops all goroutines and closes the channel, dropping any unprocessed messages without forwarding them to the next channel.  
+Optionally, an `OnMessageDrop` callback can be provided to handle messages that are dropped during a `Force` shutdown.  
+
 ## Installation
 
 ```shell
