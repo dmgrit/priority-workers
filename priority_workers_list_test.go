@@ -156,7 +156,7 @@ func testProcessMessagesByFrequencyRatio_RandomChannelsList(t *testing.T,
 	var mtx sync.Mutex
 	processingDone := make(chan struct{})
 
-	err := priority_workers.ProcessByFrequencyRatioWithCallback(ctx, channelsWithFreqRatio, func(result priority_workers.ReceiveResult[string]) {
+	err := priority_workers.ProcessByFrequencyRatioWithCallback(ctx, channelsWithFreqRatio, func(result priority_workers.Delivery[string]) {
 		if result.Status != priority_channels.ReceiveSuccess {
 			if result.Status == priority_channels.ReceiveContextCancelled {
 				processingDone <- struct{}{}

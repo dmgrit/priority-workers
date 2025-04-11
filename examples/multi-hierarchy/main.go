@@ -30,7 +30,7 @@ func main() {
 		triggerCloseChannels = append(triggerCloseChannels, make(chan bool))
 	}
 
-	customerAChannel, customerAShutdownFunc, err := priority_workers.ProcessByFrequencyRatio(ctx, []channels.ChannelWithFreqRatio[string]{
+	customerAChannel, err := priority_workers.ProcessByFrequencyRatio(ctx, []channels.ChannelWithFreqRatio[string]{
 		channels.NewChannelWithFreqRatio(
 			"Customer A - High Priority",
 			inputChannels[0],
@@ -45,7 +45,7 @@ func main() {
 		return
 	}
 
-	customerBChannel, customerBShutdownFunc, err := priority_workers.ProcessByFrequencyRatio(ctx, []channels.ChannelWithFreqRatio[string]{
+	customerBChannel, err := priority_workers.ProcessByFrequencyRatio(ctx, []channels.ChannelWithFreqRatio[string]{
 		channels.NewChannelWithFreqRatio(
 			"Customer B - High Priority",
 			inputChannels[2],
@@ -60,38 +60,34 @@ func main() {
 		return
 	}
 
-	channelsWithFreqRatio := []priority_workers.ResultChannelWithFreqRatio[string]{
-		priority_workers.NewResultChannelWithFreqRatio("Customer A",
+	channelsWithFreqRatio := []priority_workers.ChannelWithFreqRatio[string]{
+		priority_workers.NewChannelWithFreqRatio("Customer A",
 			customerAChannel,
-			customerAShutdownFunc,
 			5),
-		priority_workers.NewResultChannelWithFreqRatio("Customer B",
+		priority_workers.NewChannelWithFreqRatio("Customer B",
 			customerBChannel,
-			customerBShutdownFunc,
 			1),
 	}
 
-	combinedUsersAndMessageTypesChannel, combinedUsersAndMessageTypesShutdownFunc, err := priority_workers.CombineByFrequencyRatio(ctx, channelsWithFreqRatio)
+	combinedUsersAndMessageTypesChannel, err := priority_workers.CombineByFrequencyRatio(ctx, channelsWithFreqRatio)
 	if err != nil {
 		fmt.Printf("Unexpected error on priority channel initialization: %v\n", err)
 		return
 	}
 
-	urgentMessagesChannel, urgentMessagesCancelFunc, err := priority_workers.ProcessChannel(ctx, "Urgent Messages", inputChannels[4])
+	urgentMessagesChannel, err := priority_workers.ProcessChannel(ctx, "Urgent Messages", inputChannels[4])
 	if err != nil {
 		fmt.Printf("failed to create urgent message priority channel: %v\n", err)
 	}
 
-	resCh, cancelAll, err := priority_workers.CombineByHighestAlwaysFirst(ctx, []priority_workers.ResultChannelWithPriority[string]{
-		priority_workers.NewResultChannelWithPriority(
+	resCh, err := priority_workers.CombineByHighestAlwaysFirst(ctx, []priority_workers.ChannelWithPriority[string]{
+		priority_workers.NewChannelWithPriority(
 			"Customer Messages",
 			combinedUsersAndMessageTypesChannel,
-			combinedUsersAndMessageTypesShutdownFunc,
 			1),
-		priority_workers.NewResultChannelWithPriority(
+		priority_workers.NewChannelWithPriority(
 			"Urgent Messages",
 			urgentMessagesChannel,
-			urgentMessagesCancelFunc,
 			100),
 	})
 	if err != nil {
@@ -157,7 +153,7 @@ func main() {
 		prevFullChannelPath := ""
 		streakLength := 0
 
-		for msg := range resCh {
+		for msg := range resCh.Output {
 			details, status := msg.ReceiveDetails, msg.Status
 			fullChannelPath := ""
 			if presentDetails.Load() {
@@ -266,23 +262,23 @@ func main() {
 			switch strings.TrimPrefix(upperLine, "F") {
 			case "CA":
 				fmt.Printf("Closing Priority Channel of Customer A\n")
-				customerAShutdownFunc(shutdownMode, shutdownOptions...)
+				customerAChannel.Shutdown(shutdownMode, shutdownOptions...)
 				continue
 			case "CB":
 				fmt.Printf("Closing Priority Channel of Customer B\n")
-				customerBShutdownFunc(shutdownMode, shutdownOptions...)
+				customerBChannel.Shutdown(shutdownMode, shutdownOptions...)
 				continue
 			case "CU":
 				fmt.Printf("Closing Priority Channel of Urgent Messages\n")
-				urgentMessagesCancelFunc(shutdownMode, shutdownOptions...)
+				urgentMessagesChannel.Shutdown(shutdownMode, shutdownOptions...)
 				continue
 			case "CC":
 				fmt.Printf("Closing Combined Priority Channel of Both Customers\n")
-				combinedUsersAndMessageTypesShutdownFunc(shutdownMode, shutdownOptions...)
+				combinedUsersAndMessageTypesChannel.Shutdown(shutdownMode, shutdownOptions...)
 				continue
 			case "CG":
 				fmt.Printf("Closing Priority Channel \n")
-				cancelAll(shutdownMode, shutdownOptions...)
+				resCh.Shutdown(shutdownMode, shutdownOptions...)
 				continue
 			}
 			upperLine = strings.TrimPrefix(upperLine, "C")

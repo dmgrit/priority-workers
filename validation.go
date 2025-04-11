@@ -35,7 +35,7 @@ type channelWithFreqRatio struct {
 	FreqRatio   int
 }
 
-func convertChannelsWithFreqRatioToChannels[T any](channelsWithFreqRatio []channels.ChannelWithFreqRatio[T]) []channelWithFreqRatio {
+func convertChannelsWithFreqRatioForValidation[T any](channelsWithFreqRatio []channels.ChannelWithFreqRatio[T]) []channelWithFreqRatio {
 	res := make([]channelWithFreqRatio, 0, len(channelsWithFreqRatio))
 	for _, c := range channelsWithFreqRatio {
 		res = append(res, channelWithFreqRatio{
@@ -46,7 +46,7 @@ func convertChannelsWithFreqRatioToChannels[T any](channelsWithFreqRatio []chann
 	return res
 }
 
-func convertResultChannelsWithFreqRatioToChannels[T any](channelsWithFreqRatio []ResultChannelWithFreqRatio[T]) []channelWithFreqRatio {
+func convertWorkersChannelsWithFreqRatioForValidation[T any](channelsWithFreqRatio []ChannelWithFreqRatio[T]) []channelWithFreqRatio {
 	res := make([]channelWithFreqRatio, 0, len(channelsWithFreqRatio))
 	for _, c := range channelsWithFreqRatio {
 		res = append(res, channelWithFreqRatio{

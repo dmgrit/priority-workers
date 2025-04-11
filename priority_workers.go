@@ -9,11 +9,11 @@ import (
 	"github.com/dmgrit/priority-channels/channels"
 )
 
-func getReceiveResult[T any](
+func getDelivery[T any](
 	msg T,
 	channelName string, channelIndex int,
 	receiveDetails priority_channels.ReceiveDetails,
-	status priority_channels.ReceiveStatus) ReceiveResult[T] {
+	status priority_channels.ReceiveStatus) Delivery[T] {
 	var pathInTree []priority_channels.ChannelNode
 	if channelIndex != -1 {
 		if receiveDetails.ChannelName == "" && len(receiveDetails.PathInTree) == 0 {
@@ -28,7 +28,7 @@ func getReceiveResult[T any](
 	} else {
 		pathInTree = receiveDetails.PathInTree
 	}
-	return ReceiveResult[T]{
+	return Delivery[T]{
 		Msg: msg,
 		ReceiveDetails: priority_channels.ReceiveDetails{
 			ChannelName:  receiveDetails.ChannelName,
@@ -39,30 +39,11 @@ func getReceiveResult[T any](
 	}
 }
 
-type ShutdownMode int
-
-const (
-	Graceful ShutdownMode = iota
-	Force
-)
-
-type ShutdownOptions[T any] struct {
-	onMessageDrop func(msg T, details priority_channels.ReceiveDetails)
-}
-
-func OnMessageDrop[T any](onMessageDrop func(msg T, details priority_channels.ReceiveDetails)) func(*ShutdownOptions[T]) {
-	return func(options *ShutdownOptions[T]) {
-		options.onMessageDrop = onMessageDrop
-	}
-}
-
-type ShutdownFunc[T any] func(mode ShutdownMode, options ...func(*ShutdownOptions[T]))
-
-func processWithCallbackToChannel[R any, T any](fnProcessWithCallback func(func(r R), func()) ShutdownFunc[T]) (<-chan R, ShutdownFunc[T]) {
-	resChannel := make(chan R, 1)
-	senderChannel := make(chan R)
+func processWithCallbackToChannel[T any](fnProcessWithCallback func(func(r Delivery[T]), func()) ShutdownFunc[T]) Channel[T] {
+	resChannel := make(chan Delivery[T], 1)
+	senderChannel := make(chan Delivery[T])
 	closeChannel := make(chan struct{})
-	fnCallback := func(r R) {
+	fnCallback := func(r Delivery[T]) {
 		senderChannel <- r
 	}
 	fnClose := func() {
@@ -80,14 +61,14 @@ func processWithCallbackToChannel[R any, T any](fnProcessWithCallback func(func(
 			}
 		}
 	}()
-	return resChannel, shutdownFunc
+	return NewChannel(resChannel, shutdownFunc)
 }
 
 func callCallbacksFunc[T any](
 	onMessageReceived func(msg T, channelName string),
 	onChannelClosed func(channelName string),
-	onProcessingFinished func(reason priority_channels.ExitReason)) func(msg ReceiveResult[T]) {
-	return func(msg ReceiveResult[T]) {
+	onProcessingFinished func(reason priority_channels.ExitReason)) func(msg Delivery[T]) {
+	return func(msg Delivery[T]) {
 		switch msg.Status {
 		case priority_channels.ReceiveSuccess:
 			onMessageReceived(msg.Msg, msg.ChannelName())
@@ -108,8 +89,8 @@ func callCallbacksFunc[T any](
 func callCallbacksFuncEx[T any](
 	onMessageReceived func(msg T, details priority_channels.ReceiveDetails),
 	onChannelClosed func(details priority_channels.ReceiveDetails),
-	onProcessingFinished func(reason priority_channels.ExitReason)) func(msg ReceiveResult[T]) {
-	return func(msg ReceiveResult[T]) {
+	onProcessingFinished func(reason priority_channels.ExitReason)) func(msg Delivery[T]) {
+	return func(msg Delivery[T]) {
 		switch msg.Status {
 		case priority_channels.ReceiveSuccess:
 			onMessageReceived(msg.Msg, msg.ReceiveDetails)
@@ -128,24 +109,24 @@ func callCallbacksFuncEx[T any](
 }
 
 func ProcessByFrequencyRatio[T any](ctx context.Context,
-	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T]) (<-chan ReceiveResult[T], ShutdownFunc[T], error) {
-	if err := validateChannelsWithFreqRatio(convertChannelsWithFreqRatioToChannels(channelsWithFreqRatios)); err != nil {
-		return nil, nil, err
+	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T]) (Channel[T], error) {
+	if err := validateChannelsWithFreqRatio(convertChannelsWithFreqRatioForValidation(channelsWithFreqRatios)); err != nil {
+		return Channel[T]{}, err
 	}
-	resChan, shutdownFunc := processByFrequencyRatio(ctx, channelsWithFreqRatios)
-	return resChan, shutdownFunc, nil
+	resChan := processByFrequencyRatio(ctx, channelsWithFreqRatios)
+	return resChan, nil
 }
 
 func processByFrequencyRatio[T any](ctx context.Context,
-	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T]) (<-chan ReceiveResult[T], ShutdownFunc[T]) {
-	return processWithCallbackToChannel(func(fnCallback func(r ReceiveResult[T]), fnClose func()) ShutdownFunc[T] {
+	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T]) Channel[T] {
+	return processWithCallbackToChannel(func(fnCallback func(r Delivery[T]), fnClose func()) ShutdownFunc[T] {
 		return processByFrequencyRatioWithCallback(ctx, channelsWithFreqRatios, fnCallback, fnClose)
 	})
 }
 
 func ProcessByFrequencyRatioWithCallback[T any](ctx context.Context,
-	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T], fnCallback func(ReceiveResult[T])) error {
-	if err := validateChannelsWithFreqRatio(convertChannelsWithFreqRatioToChannels(channelsWithFreqRatios)); err != nil {
+	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T], fnCallback func(Delivery[T])) error {
+	if err := validateChannelsWithFreqRatio(convertChannelsWithFreqRatioForValidation(channelsWithFreqRatios)); err != nil {
 		return err
 	}
 	processByFrequencyRatioWithCallback(ctx, channelsWithFreqRatios, fnCallback, nil)
@@ -172,7 +153,7 @@ func ProcessByFrequencyRatioWithCallbacksEx[T any](ctx context.Context,
 
 func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T],
-	fnCallback func(ReceiveResult[T]),
+	fnCallback func(Delivery[T]),
 	fnClose func()) ShutdownFunc[T] {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 	fnShutdown := func(_ ShutdownMode, options ...func(*ShutdownOptions[T])) {
@@ -193,13 +174,13 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 					case msg, ok := <-c.MsgsC():
 						if !ok {
 							closeChannelOnce.Do(func() {
-								fnCallback(getReceiveResult(getZero[T](), "", -1,
+								fnCallback(getDelivery(getZero[T](), "", -1,
 									priority_channels.ReceiveDetails{ChannelName: c.ChannelName(), ChannelIndex: i},
 									priority_channels.ReceiveChannelClosed))
 							})
 							return
 						}
-						fnCallback(getReceiveResult(
+						fnCallback(getDelivery(
 							msg, "", -1,
 							priority_channels.ReceiveDetails{ChannelName: c.ChannelName(), ChannelIndex: i},
 							priority_channels.ReceiveSuccess))
@@ -212,12 +193,12 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 		wg.Wait()
 		select {
 		case <-ctxWithCancel.Done():
-			fnCallback(getReceiveResult(
+			fnCallback(getDelivery(
 				getZero[T](), "", -1,
 				priority_channels.ReceiveDetails{},
 				priority_channels.ReceiveContextCancelled))
 		default:
-			fnCallback(getReceiveResult(getZero[T](), "", -1,
+			fnCallback(getDelivery(getZero[T](), "", -1,
 				priority_channels.ReceiveDetails{},
 				priority_channels.ReceiveNoOpenChannels))
 		}
@@ -229,19 +210,19 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 }
 
 func CombineByFrequencyRatio[T any](ctx context.Context,
-	channelsWithFreqRatios []ResultChannelWithFreqRatio[T]) (<-chan ReceiveResult[T], ShutdownFunc[T], error) {
-	if err := validateChannelsWithFreqRatio(convertResultChannelsWithFreqRatioToChannels(channelsWithFreqRatios)); err != nil {
-		return nil, nil, err
+	channelsWithFreqRatios []ChannelWithFreqRatio[T]) (Channel[T], error) {
+	if err := validateChannelsWithFreqRatio(convertWorkersChannelsWithFreqRatioForValidation(channelsWithFreqRatios)); err != nil {
+		return Channel[T]{}, err
 	}
-	resChan, shutdownFunc := processWithCallbackToChannel(func(fnCallback func(r ReceiveResult[T]), fnClose func()) ShutdownFunc[T] {
+	resChan := processWithCallbackToChannel(func(fnCallback func(r Delivery[T]), fnClose func()) ShutdownFunc[T] {
 		return combineByFrequencyRatioWithCallback(ctx, channelsWithFreqRatios, fnCallback, fnClose)
 	})
-	return resChan, shutdownFunc, nil
+	return resChan, nil
 }
 
 func CombineByFrequencyRatioWithCallback[T any](ctx context.Context,
-	channelsWithFreqRatios []ResultChannelWithFreqRatio[T], fnCallback func(ReceiveResult[T])) (ShutdownFunc[T], error) {
-	if err := validateChannelsWithFreqRatio(convertResultChannelsWithFreqRatioToChannels(channelsWithFreqRatios)); err != nil {
+	channelsWithFreqRatios []ChannelWithFreqRatio[T], fnCallback func(Delivery[T])) (ShutdownFunc[T], error) {
+	if err := validateChannelsWithFreqRatio(convertWorkersChannelsWithFreqRatioForValidation(channelsWithFreqRatios)); err != nil {
 		return nil, err
 	}
 	shutdownFunc := combineByFrequencyRatioWithCallback(ctx, channelsWithFreqRatios, fnCallback, nil)
@@ -249,7 +230,7 @@ func CombineByFrequencyRatioWithCallback[T any](ctx context.Context,
 }
 
 func CombineByFrequencyRatioWithCallbacks[T any](ctx context.Context,
-	channelsWithFreqRatios []ResultChannelWithFreqRatio[T],
+	channelsWithFreqRatios []ChannelWithFreqRatio[T],
 	onMessageReceived func(msg T, channelName string),
 	onChannelClosed func(channelName string),
 	onProcessingFinished func(reason priority_channels.ExitReason)) {
@@ -258,7 +239,7 @@ func CombineByFrequencyRatioWithCallbacks[T any](ctx context.Context,
 }
 
 func CombineByFrequencyRatioWithCallbacksEx[T any](ctx context.Context,
-	channelsWithFreqRatios []ResultChannelWithFreqRatio[T],
+	channelsWithFreqRatios []ChannelWithFreqRatio[T],
 	onMessageReceived func(msg T, details priority_channels.ReceiveDetails),
 	onChannelClosed func(details priority_channels.ReceiveDetails),
 	onProcessingFinished func(reason priority_channels.ExitReason)) {
@@ -267,7 +248,7 @@ func CombineByFrequencyRatioWithCallbacksEx[T any](ctx context.Context,
 }
 
 func combineByFrequencyRatioWithCallback[T any](ctx context.Context,
-	channelsWithFreqRatios []ResultChannelWithFreqRatio[T], fnCallback func(ReceiveResult[T]), fnClose func()) ShutdownFunc[T] {
+	channelsWithFreqRatios []ChannelWithFreqRatio[T], fnCallback func(Delivery[T]), fnClose func()) ShutdownFunc[T] {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 	forceShutdownChannel := make(chan struct{})
 	var shutdownOnce sync.Once
@@ -291,7 +272,7 @@ func combineByFrequencyRatioWithCallback[T any](ctx context.Context,
 		var closeChannelOnce sync.Once
 		for j := 0; j < channelsWithFreqRatios[i].FreqRatio(); j++ {
 			wg.Add(1)
-			go func(c ResultChannelWithFreqRatio[T], i int) {
+			go func(c ChannelWithFreqRatio[T], i int) {
 				defer wg.Done()
 				for {
 					select {
@@ -309,7 +290,7 @@ func combineByFrequencyRatioWithCallback[T any](ctx context.Context,
 							}
 						})
 						// read all remaining messages from the channel
-						for msg := range c.ResultChannel() {
+						for msg := range c.Output() {
 							if msg.Status != priority_channels.ReceiveSuccess || shutdownMode == Force {
 								if msg.Status == priority_channels.ReceiveSuccess && shutdownOptions.onMessageDrop != nil {
 									shutdownOptions.onMessageDrop(msg.Msg, msg.ReceiveDetails)
@@ -318,21 +299,21 @@ func combineByFrequencyRatioWithCallback[T any](ctx context.Context,
 								// after channel cancellation - call callback only for successful messages of underlying channels
 								continue
 							}
-							fnCallback(getReceiveResult(
+							fnCallback(getDelivery(
 								msg.Msg, c.Name(), i,
 								msg.ReceiveDetails,
 								msg.Status))
 						}
 						return
 
-					case msg, ok := <-c.ResultChannel():
+					case msg, ok := <-c.Output():
 						if !ok {
 							select {
 							case <-ctxWithCancel.Done():
 								continue
 							default:
 								closeChannelOnce.Do(func() {
-									fnCallback(ReceiveResult[T]{
+									fnCallback(Delivery[T]{
 										Msg: getZero[T](),
 										ReceiveDetails: priority_channels.ReceiveDetails{
 											ChannelName:  c.Name(),
@@ -344,7 +325,7 @@ func combineByFrequencyRatioWithCallback[T any](ctx context.Context,
 							}
 							return
 						}
-						fnCallback(getReceiveResult(
+						fnCallback(getDelivery(
 							msg.Msg, c.Name(), i,
 							msg.ReceiveDetails,
 							msg.Status))
@@ -357,12 +338,12 @@ func combineByFrequencyRatioWithCallback[T any](ctx context.Context,
 		wg.Wait()
 		select {
 		case <-ctxWithCancel.Done():
-			fnCallback(ReceiveResult[T]{
+			fnCallback(Delivery[T]{
 				Msg:    getZero[T](),
 				Status: priority_channels.ReceiveContextCancelled,
 			})
 		default:
-			fnCallback(ReceiveResult[T]{
+			fnCallback(Delivery[T]{
 				Msg:            getZero[T](),
 				ReceiveDetails: priority_channels.ReceiveDetails{},
 				Status:         priority_channels.ReceiveNoOpenChannels,
@@ -376,80 +357,80 @@ func combineByFrequencyRatioWithCallback[T any](ctx context.Context,
 }
 
 func CombineByHighestAlwaysFirst[T any](ctx context.Context,
-	resultChannelsWithPriority []ResultChannelWithPriority[T]) (<-chan ReceiveResult[T], ShutdownFunc[T], error) {
-	channelsWithPriority := make([]channels.ChannelWithPriority[ReceiveResult[T]], 0, len(resultChannelsWithPriority))
+	resultChannelsWithPriority []ChannelWithPriority[T]) (Channel[T], error) {
+	channelsWithPriority := make([]channels.ChannelWithPriority[Delivery[T]], 0, len(resultChannelsWithPriority))
 	for _, resultChannelWithPriority := range resultChannelsWithPriority {
 		channelsWithPriority = append(channelsWithPriority, channels.NewChannelWithPriority(
 			resultChannelWithPriority.Name(),
-			resultChannelWithPriority.ResultChannel(),
+			resultChannelWithPriority.Output(),
 			resultChannelWithPriority.Priority()))
 	}
 	ch, err := priority_channels.NewByHighestAlwaysFirst(context.Background(), channelsWithPriority, priority_channels.AutoDisableClosedChannels())
 	if err != nil {
-		return nil, nil, err
+		return Channel[T]{}, err
 	}
 	shutdownUnderlyingChannelsFunc := func(mode ShutdownMode, options ...func(*ShutdownOptions[T])) {
 		for _, resultChannelWithPriority := range resultChannelsWithPriority {
 			resultChannelWithPriority.Shutdown(mode, options...)
 		}
 	}
-	wrappedCh, fnShutdown := processPriorityChannelWithUnwrap(ctx, ch, shutdownUnderlyingChannelsFunc)
-	return wrappedCh, fnShutdown, nil
+	wrappedCh := processPriorityChannelWithUnwrap(ctx, ch, shutdownUnderlyingChannelsFunc)
+	return wrappedCh, nil
 }
 
-func ProcessChannel[T any](ctx context.Context, name string, c <-chan T) (<-chan ReceiveResult[T], ShutdownFunc[T], error) {
+func ProcessChannel[T any](ctx context.Context, name string, c <-chan T) (Channel[T], error) {
 	if name == "" {
-		return nil, nil, ErrEmptyChannelName
+		return Channel[T]{}, ErrEmptyChannelName
 	}
-	resChan, shutdownFunc := processChannel(ctx, name, c)
-	return resChan, shutdownFunc, nil
+	resChan := processChannel(ctx, name, c)
+	return resChan, nil
 }
 
-func processChannel[T any](ctx context.Context, name string, c <-chan T) (<-chan ReceiveResult[T], ShutdownFunc[T]) {
+func processChannel[T any](ctx context.Context, name string, c <-chan T) Channel[T] {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 	fnShutdown := func(_ ShutdownMode, options ...func(*ShutdownOptions[T])) {
 		cancel()
 	}
 
-	var resChannel = make(chan ReceiveResult[T], 1)
+	var resChannel = make(chan Delivery[T], 1)
 	go func() {
 		defer close(resChannel)
 		for {
 			select {
 			case <-ctxWithCancel.Done():
-				resChannel <- getReceiveResult(
+				resChannel <- getDelivery(
 					getZero[T](), "", -1,
 					priority_channels.ReceiveDetails{},
 					priority_channels.ReceiveContextCancelled)
 				return
 			case msg, ok := <-c:
 				if !ok {
-					resChannel <- getReceiveResult(getZero[T](), "", -1,
+					resChannel <- getDelivery(getZero[T](), "", -1,
 						priority_channels.ReceiveDetails{ChannelName: name, ChannelIndex: 0},
 						priority_channels.ReceiveChannelClosed)
 					return
 				}
-				resChannel <- getReceiveResult(
+				resChannel <- getDelivery(
 					msg, "", -1,
 					priority_channels.ReceiveDetails{ChannelName: name, ChannelIndex: 0},
 					priority_channels.ReceiveSuccess)
 			}
 		}
 	}()
-	return resChannel, fnShutdown
+	return NewChannel(resChannel, fnShutdown)
 }
 
-func ProcessPriorityChannel[T any](ctx context.Context, c *priority_channels.PriorityChannel[T]) (<-chan ReceiveResult[T], ShutdownFunc[T], error) {
+func ProcessPriorityChannel[T any](ctx context.Context, c *priority_channels.PriorityChannel[T]) (Channel[T], error) {
 	if c == nil {
-		return nil, nil, errors.New("priority channel is nil")
+		return Channel[T]{}, errors.New("priority channel is nil")
 	}
-	resChan, shutdownFunc := processPriorityChannel(ctx, c)
-	return resChan, shutdownFunc, nil
+	resChan := processPriorityChannel(ctx, c)
+	return resChan, nil
 }
 
-func processPriorityChannel[T any](ctx context.Context, c *priority_channels.PriorityChannel[T]) (<-chan ReceiveResult[T], ShutdownFunc[T]) {
+func processPriorityChannel[T any](ctx context.Context, c *priority_channels.PriorityChannel[T]) Channel[T] {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
-	resChannel := make(chan ReceiveResult[T], 1)
+	resChannel := make(chan Delivery[T], 1)
 	fnShutdown := func(_ ShutdownMode, options ...func(*ShutdownOptions[T])) {
 		cancel()
 	}
@@ -460,14 +441,14 @@ func processPriorityChannel[T any](ctx context.Context, c *priority_channels.Pri
 			if status == priority_channels.ReceiveContextCancelled && receiveDetails.ChannelName == "" {
 				return
 			}
-			resChannel <- getReceiveResult(msg, "", -1, receiveDetails, status)
+			resChannel <- getDelivery(msg, "", -1, receiveDetails, status)
 		}
 	}()
-	return resChannel, fnShutdown
+	return NewChannel(resChannel, fnShutdown)
 }
 
-func processPriorityChannelWithUnwrap[T any](ctx context.Context, c *priority_channels.PriorityChannel[ReceiveResult[T]],
-	shutdownUnderlyingChannelsFunc ShutdownFunc[T]) (<-chan ReceiveResult[T], ShutdownFunc[T]) {
+func processPriorityChannelWithUnwrap[T any](ctx context.Context, c *priority_channels.PriorityChannel[Delivery[T]],
+	shutdownUnderlyingChannelsFunc ShutdownFunc[T]) Channel[T] {
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 	forceShutdownChannel := make(chan struct{})
 	var shutdownOnce sync.Once
@@ -485,7 +466,7 @@ func processPriorityChannelWithUnwrap[T any](ctx context.Context, c *priority_ch
 		}
 		cancel()
 	}
-	resChannel := make(chan ReceiveResult[T], 1)
+	resChannel := make(chan Delivery[T], 1)
 	go func() {
 		defer close(resChannel)
 		for {
@@ -508,24 +489,24 @@ func processPriorityChannelWithUnwrap[T any](ctx context.Context, c *priority_ch
 						continue
 					}
 					if status != priority_channels.ReceiveNoOpenChannels && shutdownMode == Graceful {
-						resChannel <- getReceiveResult(msg, "", -1, receiveDetails, status)
+						resChannel <- getDelivery(msg, "", -1, receiveDetails, status)
 					} else if status == priority_channels.ReceiveSuccess && shutdownOptions.onMessageDrop != nil {
 						shutdownOptions.onMessageDrop(msg, receiveDetails)
 					}
 					if status == priority_channels.ReceiveNoOpenChannels {
-						resChannel <- getReceiveResult(msg, "", -1, receiveDetails, priority_channels.ReceiveContextCancelled)
+						resChannel <- getDelivery(msg, "", -1, receiveDetails, priority_channels.ReceiveContextCancelled)
 						break
 					}
 				}
 				return
 			}
-			resChannel <- getReceiveResult(msg, "", -1, receiveDetails, status)
+			resChannel <- getDelivery(msg, "", -1, receiveDetails, status)
 		}
 	}()
-	return resChannel, fnShutdown
+	return NewChannel(resChannel, fnShutdown)
 }
 
-func receiveUnwrapped[T any](ctx context.Context, pc *priority_channels.PriorityChannel[ReceiveResult[T]]) (msg T, details priority_channels.ReceiveDetails, status priority_channels.ReceiveStatus) {
+func receiveUnwrapped[T any](ctx context.Context, pc *priority_channels.PriorityChannel[Delivery[T]]) (msg T, details priority_channels.ReceiveDetails, status priority_channels.ReceiveStatus) {
 	result, receiveDetails, status := pc.ReceiveWithContextEx(ctx)
 	if status != priority_channels.ReceiveSuccess {
 		return getZero[T](), receiveDetails, status
