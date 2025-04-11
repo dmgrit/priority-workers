@@ -2,10 +2,13 @@
 Process Go channels by frequency ratio to multiple levels of hierarchy using goroutines
 
 This project is companion to https://github.com/dmgrit/priority-channels.  
-The `priority-channels` package focuses on **synchronous** processing of channels, preserving the atomic semantics of Go’s `select` statement.  
-Under the hood, the channel hierarchy is collapsed into a single `select` statement, ensuring that a message is either fully processed or not processed at all.  
-In contrast, `priority-workers` is designed for **asynchronous** processing using goroutines.  
-Messages are propagated concurrently through the channel hierarchy, and may exist in an intermediate state - already read from an input channel but not yet processed.
+The two projects differ mainly in **how** they process channels:
+- `priority-channels` focuses on **synchronous** processing.
+  It preserves the atomic semantics of Go’s `select` statement by collapsing the entire channel hierarchy into a single `select`.  
+  This ensures that each message is either **fully processed or not processed at all** - no partial work happens.
+- `priority-workers` (this package) takes an **asynchronous** approach.
+   It uses **goroutines** to process channels concurrently, allowing for messages to be in an intermediate state - 
+already read from one channel, but still waiting to be processed or forwarded to the next.
 
 ## Concepts
 
