@@ -58,19 +58,6 @@ func newFromPriorityWorkersConfig[T any](ctx context.Context, config PriorityWor
 		switch config.Method {
 		case ByHighestAlwaysFirstMethodConfig:
 			return Channel[T]{}, fmt.Errorf("by-highest-always-first method is not supported for first level channels")
-			//channelsWithPriority := make([]channels.ChannelWithPriority[T], 0, len(config.Channels))
-			//for _, c := range config.Channels {
-			//	channel, ok := channelNameToChannel[c.Name]
-			//	if !ok {
-			//		return Channel[T]{}, fmt.Errorf("channel %s not found", c.Name)
-			//	}
-			//	channelsWithPriority = append(channelsWithPriority, channels.NewChannelWithPriority(c.Name, channel, c.Priority))
-			//}
-			//priorityCh, err := priority_channels.NewByHighestAlwaysFirst(ctx, channelsWithPriority, priority_channels.AutoDisableClosedChannels())
-			//if err != nil {
-			//	return Channel[T]{}, err
-			//}
-			//return ProcessPriorityChannel(ctx, priorityCh)
 		case ByFrequencyRatioMethodConfig:
 			channelsWithFreqRatio := make([]channels.ChannelWithFreqRatio[T], 0, len(config.Channels))
 			for _, c := range config.Channels {
