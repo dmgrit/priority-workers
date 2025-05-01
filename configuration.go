@@ -125,10 +125,10 @@ func processChannelFromConfig[T any](ctx context.Context, name string, channelNa
 	}
 	recreateConfigChannel, ok := recreateConfigChannels[name]
 	if !ok {
-		fmt.Printf("No messages in recreate channel %s\n", name)
+		logDebugMessage("No messages in recreate channel %s\n", name)
 		return ProcessChannel(ctx, name, c)
 	}
-	fmt.Printf("Using recreate channel %s with %d messages\n", name, len(recreateConfigChannel))
+	logDebugMessage("Using recreate channel %s with %d messages\n", name, len(recreateConfigChannel))
 	channelsWithFreqRatio := make([]channels.ChannelWithFreqRatio[T], 0, 2)
 	channelsWithFreqRatio = append(channelsWithFreqRatio, channels.NewChannelWithFreqRatio(name, c, 1))
 	recreateInputChannel := channels.NewChannelWithFreqRatio(name+recreateChannelNameSuffix, recreateConfigChannel, 1)

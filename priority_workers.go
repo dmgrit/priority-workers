@@ -3,7 +3,6 @@ package priority_workers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -176,7 +175,7 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 					case msg, ok := <-c.MsgsC():
 						if !ok {
 							if strings.HasSuffix(c.ChannelName(), recreateChannelNameSuffix) {
-								fmt.Printf("Finished transferring messages for recreated channel %s\n", c.ChannelName())
+								logDebugMessage("Finished transferring messages for recreated channel %s\n", c.ChannelName())
 								return
 							}
 							closeChannelOnce.Do(func() {
@@ -541,4 +540,8 @@ func receiveUnwrapped[T any](ctx context.Context, pc *priority_channels.Priority
 func getZero[T any]() T {
 	var result T
 	return result
+}
+
+func logDebugMessage(msg string, args ...any) {
+	// fmt.Printf(msg, args...)
 }

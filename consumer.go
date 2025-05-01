@@ -161,7 +161,7 @@ func (c *Consumer[T]) doUpdatePriorityConfiguration(priorityConfiguration Config
 		}
 		prevRecreateMessagesCh, ok := c.channelNameToReconfigureChannel[channelName]
 		if ok {
-			fmt.Printf("Recreating channel %s - %d messages still in old recreate channel, passing to new recreate channel\n", channelName, len(prevRecreateMessagesCh))
+			logDebugMessage("Recreating channel %s - %d messages still in old recreate channel, passing to new recreate channel\n", channelName, len(prevRecreateMessagesCh))
 			for msg := range prevRecreateMessagesCh {
 				recreateCh <- msg
 			}
