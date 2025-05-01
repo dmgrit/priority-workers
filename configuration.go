@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/dmgrit/priority-channels"
 	"github.com/dmgrit/priority-channels/channels"
 )
 
@@ -30,29 +31,36 @@ type ChannelConfig struct {
 	*PriorityWorkersConfig `json:"priorityWorkers,omitempty"`
 }
 
+const (
+	recreateChannelNameSuffix = "#priority_workers_recreate_channel"
+)
+
 func NewFromConfiguration[T any](ctx context.Context, config Configuration, channelNameToChannel map[string]<-chan T) (Channel[T], error) {
 	if config.PriorityWorkers == nil {
 		return Channel[T]{}, fmt.Errorf("no priority workers config found")
 	}
-	return newFromPriorityWorkersConfig(ctx, *config.PriorityWorkers, channelNameToChannel)
+	return newFromPriorityWorkersConfig(ctx, *config.PriorityWorkers, channelNameToChannel, nil)
 }
 
-func newFromPriorityWorkersConfig[T any](ctx context.Context, config PriorityWorkersConfig, channelNameToChannel map[string]<-chan T) (Channel[T], error) {
+func newFromPriorityWorkersConfig[T any](ctx context.Context, config PriorityWorkersConfig, channelNameToChannel map[string]<-chan T, recreateConfigChannels map[string]chan T) (Channel[T], error) {
 	var isCombinedChannel bool
+	var existsRecreatedChannel bool
 	for _, c := range config.Channels {
 		if c.PriorityWorkersConfig != nil {
 			isCombinedChannel = true
 			break
 		}
+		if recreateConfigChannels != nil {
+			if _, ok := recreateConfigChannels[c.Name]; ok {
+				existsRecreatedChannel = true
+				break
+			}
+		}
 	}
-	if !isCombinedChannel {
+	if !isCombinedChannel && !existsRecreatedChannel {
 		if len(config.Channels) == 1 {
 			c := config.Channels[0]
-			channel, ok := channelNameToChannel[c.Name]
-			if !ok {
-				return Channel[T]{}, fmt.Errorf("channel %s not found", c.Name)
-			}
-			return ProcessChannel(ctx, c.Name, channel)
+			return processChannelFromConfig(ctx, c.Name, channelNameToChannel, recreateConfigChannels)
 		}
 
 		switch config.Method {
@@ -80,9 +88,9 @@ func newFromPriorityWorkersConfig[T any](ctx context.Context, config PriorityWor
 			var priorityChannel Channel[T]
 			var err error
 			if c.PriorityWorkersConfig == nil {
-				priorityChannel, err = ProcessChannel(context.Background(), c.Name, channelNameToChannel[c.Name])
+				priorityChannel, err = processChannelFromConfig(context.Background(), c.Name, channelNameToChannel, recreateConfigChannels)
 			} else {
-				priorityChannel, err = newFromPriorityWorkersConfig[T](context.Background(), *c.PriorityWorkersConfig, channelNameToChannel)
+				priorityChannel, err = newFromPriorityWorkersConfig[T](context.Background(), *c.PriorityWorkersConfig, channelNameToChannel, recreateConfigChannels)
 			}
 			if err != nil {
 				return Channel[T]{}, err
@@ -96,9 +104,9 @@ func newFromPriorityWorkersConfig[T any](ctx context.Context, config PriorityWor
 			var priorityChannel Channel[T]
 			var err error
 			if c.PriorityWorkersConfig == nil {
-				priorityChannel, err = ProcessChannel(context.Background(), c.Name, channelNameToChannel[c.Name])
+				priorityChannel, err = processChannelFromConfig(context.Background(), c.Name, channelNameToChannel, recreateConfigChannels)
 			} else {
-				priorityChannel, err = newFromPriorityWorkersConfig[T](context.Background(), *c.PriorityWorkersConfig, channelNameToChannel)
+				priorityChannel, err = newFromPriorityWorkersConfig[T](context.Background(), *c.PriorityWorkersConfig, channelNameToChannel, recreateConfigChannels)
 			}
 			if err != nil {
 				return Channel[T]{}, err
@@ -109,4 +117,26 @@ func newFromPriorityWorkersConfig[T any](ctx context.Context, config PriorityWor
 	}
 
 	return Channel[T]{}, fmt.Errorf("unknown type %s", config.Method)
+}
+
+func processChannelFromConfig[T any](ctx context.Context, name string, channelNameToChannel map[string]<-chan T, recreateConfigChannels map[string]chan T) (Channel[T], error) {
+	c, ok := channelNameToChannel[name]
+	if !ok {
+		return Channel[T]{}, fmt.Errorf("channel %s not found", name)
+	}
+	recreateConfigChannel, ok := recreateConfigChannels[name]
+	if !ok {
+		fmt.Printf("No messages in recreate channel %s\n", name)
+		return ProcessChannel(ctx, name, c)
+	}
+	fmt.Printf("Using recreate channel %s with %d messages\n", name, len(recreateConfigChannel))
+	channelsWithPriority := make([]channels.ChannelWithPriority[T], 0, 2)
+	channelsWithPriority = append(channelsWithPriority, channels.NewChannelWithPriority(name, c, 1))
+	recreateInputChannel := channels.NewChannelWithPriority(name+recreateChannelNameSuffix, recreateConfigChannel, 2)
+	channelsWithPriority = append(channelsWithPriority, recreateInputChannel)
+	priorityCh, err := priority_channels.NewByHighestAlwaysFirst(ctx, channelsWithPriority, priority_channels.AutoDisableClosedChannels())
+	if err != nil {
+		return Channel[T]{}, fmt.Errorf("failed to create priority channel for %s: %w", name, err)
+	}
+	return ProcessPriorityChannel(ctx, priorityCh)
 }

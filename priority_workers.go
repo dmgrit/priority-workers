@@ -3,6 +3,8 @@ package priority_workers
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/dmgrit/priority-channels"
@@ -173,6 +175,10 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 						return
 					case msg, ok := <-c.MsgsC():
 						if !ok {
+							if strings.HasSuffix(c.ChannelName(), recreateChannelNameSuffix) {
+								fmt.Printf("Finished transferring messages for recreated channel %s\n", c.ChannelName())
+								return
+							}
 							closeChannelOnce.Do(func() {
 								fnCallback(getDelivery(getZero[T](), "", -1,
 									priority_channels.ReceiveDetails{ChannelName: c.ChannelName(), ChannelIndex: i},
@@ -180,9 +186,11 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 							})
 							return
 						}
+						//channelName := strings.TrimSuffix(c.ChannelName(), recreateChannelNameSuffix)
+						channelName := c.ChannelName()
 						fnCallback(getDelivery(
 							msg, "", -1,
-							priority_channels.ReceiveDetails{ChannelName: c.ChannelName(), ChannelIndex: i},
+							priority_channels.ReceiveDetails{ChannelName: channelName, ChannelIndex: i},
 							priority_channels.ReceiveSuccess))
 					}
 				}

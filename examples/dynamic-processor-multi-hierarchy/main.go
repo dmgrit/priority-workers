@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -84,15 +85,23 @@ func main() {
 		},
 	}
 
-	resCh, err := priority_workers.NewFromConfiguration[string](ctx, priorityConfig, map[string]<-chan string{
+	channelNameToChannel := map[string]<-chan string{
 		"Customer A - High Priority": inputChannels[0],
 		"Customer A - Low Priority":  inputChannels[1],
 		"Customer B - High Priority": inputChannels[2],
 		"Customer B - Low Priority":  inputChannels[3],
 		"Urgent Messages":            inputChannels[4],
-	})
+	}
+
+	consumer, err := priority_workers.NewConsumer(ctx, channelNameToChannel, priorityConfig)
+	//resCh, err := priority_workers.NewFromConfiguration[string](ctx, priorityConfig, channelNameToChannel)
 	if err != nil {
-		fmt.Printf("Unexpected error on priority channel initialization: %v\n", err)
+		fmt.Printf("Unexpected error on consumer initialization: %v\n", err)
+		return
+	}
+	resCh, err := consumer.Consume()
+	if err != nil {
+		fmt.Printf("Unexpected error on calling consume: %v\n", err)
 		return
 	}
 
@@ -154,7 +163,7 @@ func main() {
 		prevFullChannelPath := ""
 		streakLength := 0
 
-		for msg := range resCh.Output {
+		for msg := range resCh {
 			details, status := msg.ReceiveDetails, msg.Status
 			fullChannelPath := ""
 			if presentDetails.Load() {
@@ -241,6 +250,31 @@ func main() {
 		line = strings.TrimSpace(line)
 
 		upperLine := strings.ToUpper(line)
+		words := strings.Split(line, " ")
+		if len(words) == 2 {
+			switch words[0] {
+			case "load":
+				contents, err := os.ReadFile(words[1])
+				if err != nil {
+					fmt.Printf("failed to load file %s: %v\n", words[1], err)
+					continue
+				}
+
+				var priorityConfig priority_workers.Configuration
+				if err := json.Unmarshal(contents, &priorityConfig); err != nil {
+					fmt.Printf("failed to unmarshal priority configuration: %v\n", err)
+					continue
+				}
+
+				if err := consumer.UpdatePriorityConfiguration(priorityConfig); err != nil {
+					fmt.Printf("failed to update priority consumer configuration: %v\n", err)
+					continue
+				}
+				fmt.Printf("Updated prioritization configuration\n")
+			}
+			continue
+		}
+
 		value := !strings.HasPrefix(upperLine, "N")
 		operation := "Started"
 		if !value {
@@ -248,17 +282,8 @@ func main() {
 		}
 		if strings.HasPrefix(upperLine, "C") || strings.HasPrefix(upperLine, "FC") {
 			shutdownMode := priority_workers.Graceful
-			var shutdownOptions []func(*priority_workers.ShutdownOptions[string])
 			if strings.HasPrefix(upperLine, "FC") {
 				shutdownMode = priority_workers.Force
-				shutdownOptions = append(shutdownOptions, priority_workers.OnMessageDrop(func(msg string, details priority_channels.ReceiveDetails) {
-					fullChannelPath := ""
-					for _, channelNode := range details.PathInTree {
-						fullChannelPath += fmt.Sprintf("%s [%d] -> ", channelNode.ChannelName, channelNode.ChannelIndex)
-					}
-					fullChannelPath = fullChannelPath + fmt.Sprintf("%s [%d]", details.ChannelName, details.ChannelIndex)
-					fmt.Printf("Message dropped from: %s\n", fullChannelPath)
-				}))
 			}
 			switch strings.TrimPrefix(upperLine, "F") {
 			//case "CA":
@@ -278,8 +303,22 @@ func main() {
 			//	combinedUsersAndMessageTypesChannel.Shutdown(shutdownMode, shutdownOptions...)
 			//	continue
 			case "CG":
-				fmt.Printf("Closing Priority Channel \n")
-				resCh.Shutdown(shutdownMode, shutdownOptions...)
+				fmt.Printf("Closing Priority Channel\n")
+				if shutdownMode == priority_workers.Force {
+					consumer.StopImmediately(func(msg string, details priority_channels.ReceiveDetails) {
+						fullChannelPath := ""
+						for _, channelNode := range details.PathInTree {
+							fullChannelPath += fmt.Sprintf("%s [%d] -> ", channelNode.ChannelName, channelNode.ChannelIndex)
+						}
+						fullChannelPath = fullChannelPath + fmt.Sprintf("%s [%d]", details.ChannelName, details.ChannelIndex)
+						fmt.Printf("Message dropped from: %s\n", fullChannelPath)
+					})
+				} else {
+					consumer.StopGracefully()
+				}
+				fmt.Printf("Waiting for processing to finished\n")
+				<-consumer.Done()
+				fmt.Printf("Processing is done\n")
 				continue
 			}
 			upperLine = strings.TrimPrefix(upperLine, "C")
@@ -316,7 +355,7 @@ func main() {
 			presentDetails.Store(true)
 		case "ND":
 			presentDetails.Store(false)
-		case "0":
+		case "QUIT":
 			fmt.Printf("Exiting\n")
 			cancel()
 			return
