@@ -133,5 +133,5 @@ func processChannelFromConfig[T any](ctx context.Context, name string, channelNa
 	channelsWithFreqRatio = append(channelsWithFreqRatio, channels.NewChannelWithFreqRatio(name, c, 1))
 	recreateInputChannel := channels.NewChannelWithFreqRatio(name+recreateChannelNameSuffix, recreateConfigChannel, 1)
 	channelsWithFreqRatio = append(channelsWithFreqRatio, recreateInputChannel)
-	return ProcessByFrequencyRatio(ctx, channelsWithFreqRatio)
+	return processByFrequencyRatio(ctx, channelsWithFreqRatio, withResetReceiveDetails()), nil
 }
