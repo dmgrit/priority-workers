@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dmgrit/priority-channels"
 	"github.com/dmgrit/priority-channels/channels"
 )
 
@@ -130,13 +129,9 @@ func processChannelFromConfig[T any](ctx context.Context, name string, channelNa
 		return ProcessChannel(ctx, name, c)
 	}
 	fmt.Printf("Using recreate channel %s with %d messages\n", name, len(recreateConfigChannel))
-	channelsWithPriority := make([]channels.ChannelWithPriority[T], 0, 2)
-	channelsWithPriority = append(channelsWithPriority, channels.NewChannelWithPriority(name, c, 1))
-	recreateInputChannel := channels.NewChannelWithPriority(name+recreateChannelNameSuffix, recreateConfigChannel, 2)
-	channelsWithPriority = append(channelsWithPriority, recreateInputChannel)
-	priorityCh, err := priority_channels.NewByHighestAlwaysFirst(ctx, channelsWithPriority, priority_channels.AutoDisableClosedChannels())
-	if err != nil {
-		return Channel[T]{}, fmt.Errorf("failed to create priority channel for %s: %w", name, err)
-	}
-	return ProcessPriorityChannel(ctx, priorityCh)
+	channelsWithFreqRatio := make([]channels.ChannelWithFreqRatio[T], 0, 2)
+	channelsWithFreqRatio = append(channelsWithFreqRatio, channels.NewChannelWithFreqRatio(name, c, 1))
+	recreateInputChannel := channels.NewChannelWithFreqRatio(name+recreateChannelNameSuffix, recreateConfigChannel, 1)
+	channelsWithFreqRatio = append(channelsWithFreqRatio, recreateInputChannel)
+	return ProcessByFrequencyRatio(ctx, channelsWithFreqRatio)
 }

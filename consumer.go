@@ -142,14 +142,25 @@ func (c *Consumer[T]) doUpdatePriorityConfiguration(priorityConfiguration Config
 	}
 
 	recreateConfigChannels := make(map[string]chan T)
+	channelTotalDroppedMessages := make(map[string]int)
 	for channelName, msgs := range droppedMessages {
-		prevRecreateMessagesCh := c.channelNameToReconfigureChannel[channelName]
-		recreateCh := make(chan T, len(msgs)+len(prevRecreateMessagesCh))
+		channelTotalDroppedMessages[channelName] = len(msgs)
+	}
+	for channelName, ch := range c.channelNameToReconfigureChannel {
+		channelTotalDroppedMessages[channelName] = channelTotalDroppedMessages[channelName] + len(ch)
+	}
+
+	for channelName, bufferSize := range channelTotalDroppedMessages {
+		recreateCh := make(chan T, bufferSize)
 		recreateConfigChannels[channelName] = recreateCh
-		for _, msg := range msgs {
-			recreateCh <- msg
+		msgs, ok := droppedMessages[channelName]
+		if ok {
+			for _, msg := range msgs {
+				recreateCh <- msg
+			}
 		}
-		if prevRecreateMessagesCh != nil && len(prevRecreateMessagesCh) > 0 {
+		prevRecreateMessagesCh, ok := c.channelNameToReconfigureChannel[channelName]
+		if ok {
 			fmt.Printf("Recreating channel %s - %d messages still in old recreate channel, passing to new recreate channel\n", channelName, len(prevRecreateMessagesCh))
 			for msg := range prevRecreateMessagesCh {
 				recreateCh <- msg
@@ -191,6 +202,11 @@ func (c *Consumer[T]) stop(mode ShutdownMode, onMessageDrop func(msg T, details 
 		c.onMessageDrop = onMessageDrop
 		if onMessageDrop != nil {
 			c.channel.Shutdown(mode, OnMessageDrop(onMessageDrop))
+			for channelName, ch := range c.channelNameToReconfigureChannel {
+				for msg := range ch {
+					onMessageDrop(msg, priority_channels.ReceiveDetails{ChannelName: channelName})
+				}
+			}
 		} else {
 			c.channel.Shutdown(mode)
 		}

@@ -22,6 +22,9 @@ func main() {
 	var inputChannels []chan string
 	var triggerPauseChannels []chan bool
 	var triggerCloseChannels []chan bool
+	var totalSentMessages atomic.Int32
+	var totalReceivedMessages atomic.Int32
+	var totalDroppedMessages atomic.Int32
 
 	channelsNum := 5
 	for i := 1; i <= channelsNum; i++ {
@@ -141,6 +144,7 @@ func main() {
 								closed = true
 							}
 						case inputChannels[i-1] <- fmt.Sprintf("Channel %d", i):
+							totalSentMessages.Add(1)
 						}
 					} else {
 						time.Sleep(100 * time.Millisecond)
@@ -175,6 +179,7 @@ func main() {
 				fullChannelPath = details.ChannelName
 			}
 			if status == priority_channels.ReceiveSuccess {
+				totalReceivedMessages.Add(1)
 				if fullChannelPath == prevFullChannelPath {
 					streakLength++
 				} else {
@@ -306,6 +311,7 @@ func main() {
 				fmt.Printf("Closing Priority Channel\n")
 				if shutdownMode == priority_workers.Force {
 					consumer.StopImmediately(func(msg string, details priority_channels.ReceiveDetails) {
+						totalDroppedMessages.Add(1)
 						fullChannelPath := ""
 						for _, channelNode := range details.PathInTree {
 							fullChannelPath += fmt.Sprintf("%s [%d] -> ", channelNode.ChannelName, channelNode.ChannelIndex)
@@ -319,6 +325,11 @@ func main() {
 				fmt.Printf("Waiting for processing to finished\n")
 				<-consumer.Done()
 				fmt.Printf("Processing is done\n")
+				fmt.Printf("Total sent messages: %d\n", totalSentMessages.Load())
+				receivedMessages := totalReceivedMessages.Load()
+				droppedMessages := totalDroppedMessages.Load()
+				fmt.Printf("Total received messages: %d, Total dropped messages: %d, Total: %d\n",
+					receivedMessages, droppedMessages, receivedMessages+droppedMessages)
 				continue
 			}
 			upperLine = strings.TrimPrefix(upperLine, "C")

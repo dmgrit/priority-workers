@@ -14,7 +14,7 @@
           "channels": [
             {
               "name": "Customer A",
-              "freqRatio": 9,
+              "freqRatio": 5,
               "priorityWorkers": {
                 "method": "by-frequency-ratio",
                 "channels": [

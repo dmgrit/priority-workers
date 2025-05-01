@@ -186,8 +186,8 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 							})
 							return
 						}
-						//channelName := strings.TrimSuffix(c.ChannelName(), recreateChannelNameSuffix)
-						channelName := c.ChannelName()
+						channelName := strings.TrimSuffix(c.ChannelName(), recreateChannelNameSuffix)
+						// channelName := c.ChannelName()
 						fnCallback(getDelivery(
 							msg, "", -1,
 							priority_channels.ReceiveDetails{ChannelName: channelName, ChannelIndex: i},
