@@ -1,0 +1,54 @@
+{
+  "priorityWorkers": {
+    "method": "by-highest-always-first",
+    "channels": [
+      {
+        "name": "Urgent Messages",
+        "priority": 10
+      },
+      {
+        "name": "Customer Messages",
+        "priority": 1,
+        "priorityWorkers": {
+          "method": "by-frequency-ratio",
+          "channels": [
+            {
+              "name": "Customer A",
+              "freqRatio": 5,
+              "priorityWorkers": {
+                "method": "by-frequency-ratio",
+                "channels": [
+                  {
+                    "name": "Customer A - High Priority",
+                    "freqRatio": 3
+                  },
+                  {
+                    "name": "Customer A - Low Priority",
+                    "freqRatio": 1
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Customer B",
+              "freqRatio": 1,
+              "priorityWorkers": {
+                "method": "by-frequency-ratio",
+                "channels": [
+                  {
+                    "name": "Customer B - High Priority",
+                    "freqRatio": 3
+                  },
+                  {
+                    "name": "Customer B - Low Priority",
+                    "freqRatio": 1
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
