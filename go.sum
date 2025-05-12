@@ -1,2 +1,4 @@
 github.com/dmgrit/priority-channels v0.1.1-beta.11 h1:8lyfGyEpBq52YlvIh8oJ8EIZk6bZ7tC+m47NoIERF7c=
 github.com/dmgrit/priority-channels v0.1.1-beta.11/go.mod h1:nGELXggJDPEqYb3zftJ1GA00LFjxo9piBYJStPBBBNA=
+github.com/dmgrit/workerpool v0.1.1-beta.1 h1:PjfnmRl3dbkDs0raEoH0K3E6FjcNAq4DG8zToCnJnfQ=
+github.com/dmgrit/workerpool v0.1.1-beta.1/go.mod h1:mMVTo8sN5jlc8B4xRbdjOrdXzZfX9QUm2hoT8FjvWzs=

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/dmgrit/priority-channels"
-	"github.com/dmgrit/priority-channels/workerpool"
+	"github.com/dmgrit/workerpool"
 )
 
 type DynamicPriorityProcessor[T any] struct {
