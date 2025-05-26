@@ -383,6 +383,10 @@ func main() {
 				fmt.Printf("Message dropped from: %s\n", fullChannelPath)
 			})
 			<-wp.Done()
+			for wp.ActiveWorkersNum() != 0 {
+				fmt.Printf("Waiting for %d active workers to finish...\n", wp.ActiveWorkersNum())
+				time.Sleep(100 * time.Millisecond)
+			}
 			fmt.Printf("Processing finished\n")
 			fmt.Printf("Total sent messages: %d\n", totalSentMessages.Load())
 			receivedMessages := totalReceivedMessages.Load()
