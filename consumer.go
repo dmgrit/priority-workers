@@ -107,6 +107,11 @@ func doConsume[T any, R any](c *Consumer[T], fnGetResult func(msg T, details pri
 }
 
 func (c *Consumer[T]) UpdatePriorityConfiguration(priorityConfiguration Configuration) error {
+	isStopped, _, _ := c.Status()
+	if isStopped {
+		return errors.New("cannot update priority configuration after consumer is stopped")
+	}
+
 	select {
 	case c.priorityConfigUpdatesC <- priorityConfiguration:
 	default:
@@ -210,12 +215,12 @@ func (c *Consumer[T]) stop(mode ShutdownMode, onMessageDrop func(msg T, details 
 		} else {
 			c.channel.Shutdown(mode)
 		}
+		if mode == Force {
+			close(c.forceShutdownChannel)
+		}
 	}
 	c.priorityWorkersUpdatesMtx.Unlock()
 
-	if mode == Force {
-		c.forceShutdownChannel <- struct{}{}
-	}
 	<-c.priorityWorkersClosedC
 }
 

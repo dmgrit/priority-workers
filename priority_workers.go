@@ -120,7 +120,7 @@ func ProcessByFrequencyRatio[T any](ctx context.Context,
 
 func processByFrequencyRatio[T any](ctx context.Context,
 	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T],
-	options ...func(*processByFrequencyRatioOptions)) Channel[T] {
+	options ...func(*processChannelOptions)) Channel[T] {
 	return processWithCallbackToChannel(func(fnCallback func(r Delivery[T]), fnClose func()) ShutdownFunc[T] {
 		return processByFrequencyRatioWithCallback(ctx, channelsWithFreqRatios, fnCallback, fnClose, options...)
 	})
@@ -153,12 +153,12 @@ func ProcessByFrequencyRatioWithCallbacksEx[T any](ctx context.Context,
 		callCallbacksFuncEx(onMessageReceived, onChannelClosed, onProcessingFinished), nil)
 }
 
-type processByFrequencyRatioOptions struct {
+type processChannelOptions struct {
 	resetReceiveDetails *bool
 }
 
-func withResetReceiveDetails() func(opt *processByFrequencyRatioOptions) {
-	return func(opt *processByFrequencyRatioOptions) {
+func withResetReceiveDetails() func(opt *processChannelOptions) {
+	return func(opt *processChannelOptions) {
 		d := true
 		opt.resetReceiveDetails = &d
 	}
@@ -168,8 +168,8 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 	channelsWithFreqRatios []channels.ChannelWithFreqRatio[T],
 	fnCallback func(Delivery[T]),
 	fnClose func(),
-	options ...func(*processByFrequencyRatioOptions)) ShutdownFunc[T] {
-	pcOptions := &processByFrequencyRatioOptions{}
+	options ...func(*processChannelOptions)) ShutdownFunc[T] {
+	pcOptions := &processChannelOptions{}
 	for _, option := range options {
 		option(pcOptions)
 	}
@@ -190,6 +190,11 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 						// don't receive any new messages after the context is cancelled
 						return
 					case msg, ok := <-c.MsgsC():
+						channelName := strings.TrimSuffix(c.ChannelName(), recreateChannelNameSuffix)
+						var receiveDetails priority_channels.ReceiveDetails
+						if pcOptions.resetReceiveDetails == nil || !*pcOptions.resetReceiveDetails {
+							receiveDetails = priority_channels.ReceiveDetails{ChannelName: channelName, ChannelIndex: i}
+						}
 						if !ok {
 							if strings.HasSuffix(c.ChannelName(), recreateChannelNameSuffix) {
 								logDebugMessage("Finished transferring messages for recreated channel %s\n", c.ChannelName())
@@ -197,16 +202,10 @@ func processByFrequencyRatioWithCallback[T any](ctx context.Context,
 							}
 							closeChannelOnce.Do(func() {
 								fnCallback(getDelivery(getZero[T](), "", -1,
-									priority_channels.ReceiveDetails{ChannelName: c.ChannelName(), ChannelIndex: i},
+									receiveDetails,
 									priority_channels.ReceiveChannelClosed))
 							})
 							return
-						}
-						channelName := strings.TrimSuffix(c.ChannelName(), recreateChannelNameSuffix)
-						// channelName := c.ChannelName()
-						var receiveDetails priority_channels.ReceiveDetails
-						if pcOptions.resetReceiveDetails == nil || !*pcOptions.resetReceiveDetails {
-							receiveDetails = priority_channels.ReceiveDetails{ChannelName: channelName, ChannelIndex: i}
 						}
 						fnCallback(getDelivery(
 							msg, "", -1,
@@ -414,7 +413,11 @@ func ProcessChannel[T any](ctx context.Context, name string, c <-chan T) (Channe
 	return resChan, nil
 }
 
-func processChannel[T any](ctx context.Context, name string, c <-chan T) Channel[T] {
+func processChannel[T any](ctx context.Context, name string, c <-chan T, options ...func(*processChannelOptions)) Channel[T] {
+	pcOptions := &processChannelOptions{}
+	for _, option := range options {
+		option(pcOptions)
+	}
 	ctxWithCancel, cancel := context.WithCancel(ctx)
 	fnShutdown := func(_ ShutdownMode, options ...func(*ShutdownOptions[T])) {
 		cancel()
@@ -432,15 +435,19 @@ func processChannel[T any](ctx context.Context, name string, c <-chan T) Channel
 					priority_channels.ReceiveContextCancelled)
 				return
 			case msg, ok := <-c:
+				var receiveDetails priority_channels.ReceiveDetails
+				if pcOptions.resetReceiveDetails == nil || !*pcOptions.resetReceiveDetails {
+					receiveDetails = priority_channels.ReceiveDetails{ChannelName: name, ChannelIndex: 0}
+				}
 				if !ok {
 					resChannel <- getDelivery(getZero[T](), "", -1,
-						priority_channels.ReceiveDetails{ChannelName: name, ChannelIndex: 0},
+						receiveDetails,
 						priority_channels.ReceiveChannelClosed)
 					return
 				}
 				resChannel <- getDelivery(
 					msg, "", -1,
-					priority_channels.ReceiveDetails{ChannelName: name, ChannelIndex: 0},
+					receiveDetails,
 					priority_channels.ReceiveSuccess)
 			}
 		}
